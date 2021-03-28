@@ -1,4 +1,6 @@
 #include "led-matrix.addon.h"
+#include <cmath>
+#include <iostream>
 
 #define BILLION  1000000000L;
 #define MILLION  1000000000L;
@@ -28,8 +30,12 @@ Napi::Object LedMatrixAddon::Init(Napi::Env env, Napi::Object exports) {
 		InstanceMethod("clear", &LedMatrixAddon::clear),
 		InstanceMethod("drawBuffer", &LedMatrixAddon::draw_buffer),
 		InstanceMethod("drawCircle", &LedMatrixAddon::draw_circle),
+		InstanceMethod("drawFilledCircle", &LedMatrixAddon::draw_filled_circle),
 		InstanceMethod("drawLine", &LedMatrixAddon::draw_line),
 		InstanceMethod("drawRect", &LedMatrixAddon::draw_rect),
+		InstanceMethod("drawFilledRect", &LedMatrixAddon::draw_filled_rect),
+		InstanceMethod("drawPolygon", &LedMatrixAddon::draw_polygon),
+		InstanceMethod("drawFilledPolygon", &LedMatrixAddon::draw_filled_polygon),
 		InstanceMethod("drawText", &LedMatrixAddon::draw_text),
 		InstanceMethod("fgColor", &LedMatrixAddon::fg_color),
 		InstanceMethod("fill", &LedMatrixAddon::fill),
@@ -239,6 +245,23 @@ Napi::Value LedMatrixAddon::draw_circle(const Napi::CallbackInfo& info) {
 	return info.This();
 }
 
+Napi::Value LedMatrixAddon::draw_filled_circle(const Napi::CallbackInfo& info) {
+	const auto x = info[0].As<Napi::Number>().Int32Value();
+	const auto y = info[1].As<Napi::Number>().Int32Value();
+	const auto r = info[2].As<Napi::Number>().Int32Value();
+	DrawCircle(this->canvas_, x, y, r, fg_color_);
+
+	for(int i = 0 - r; i <= r; i++){
+		for(int j = 0 -  r; j <= r; j++){
+			if(pow(i, 2) + pow(j, 2) < pow(r, 2)){
+				this->canvas_->SetPixel(i+x, y-j, fg_color_.r, fg_color_.g, fg_color_.b);
+			}
+		}
+	}
+
+	return info.This();
+}
+
 Napi::Value LedMatrixAddon::draw_line(const Napi::CallbackInfo& info) {
 	const auto x0 = info[0].As<Napi::Number>().Uint32Value();
 	const auto y0 = info[1].As<Napi::Number>().Uint32Value();
@@ -259,6 +282,50 @@ Napi::Value LedMatrixAddon::draw_rect(const Napi::CallbackInfo& info) {
 	DrawLine(this->canvas_, x0 + w, y0, x0 + w, y0 + h, fg_color_);
 	DrawLine(this->canvas_, x0 + w, y0 + h, x0, y0 + h, fg_color_);
 	DrawLine(this->canvas_, x0, y0 + h, x0, y0, fg_color_);
+
+	return info.This();
+}
+
+Napi::Value LedMatrixAddon::draw_filled_rect(const Napi::CallbackInfo& info) {
+	const auto x0 = info[0].As<Napi::Number>().Int32Value();
+	const auto y0 = info[1].As<Napi::Number>().Int32Value();
+	const auto w  = info[2].As<Napi::Number>().Int32Value();
+	const auto h  = info[3].As<Napi::Number>().Int32Value();
+
+	for(int i = y0 + 1; i < y0 + h; i++){
+		DrawLine(this->canvas_, x0+1, i, x0 + w -1, i, fg_color_);
+
+	}
+
+	DrawLine(this->canvas_, x0, y0, x0 + w - 1, y0, fg_color_); // Top
+	DrawLine(this->canvas_, x0 + w - 1, y0, x0 + w - 1, y0 + h - 1, fg_color_); // Right
+	DrawLine(this->canvas_, x0 + w - 1, y0 + h - 1, x0, y0 + h - 1, fg_color_);
+	DrawLine(this->canvas_, x0, y0 + h - 1, x0, y0, fg_color_);
+
+	return info.This();
+}
+
+Napi::Value LedMatrixAddon::draw_polygon(const Napi::CallbackInfo& info) {
+
+	const auto coordinates = info[0].As<Napi::Array>();
+	const auto length = coordinates.Length();
+	
+	for(int p = 0; p < length; p++){ // Iterate through points
+		DrawLine(this->canvas_, coordinates[((p * 2) + 0) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 1) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 2) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
+	}
+
+	return info.This();
+}
+
+Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) {
+
+	const auto coordinates = info[0].As<Napi::Array>();
+	const auto length = coordinates.Length();
+	
+	for(int p = 0; p < length; p++){ // Iterate through points
+		DrawLine(this->canvas_, coordinates[((p * 2) + 0) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 1) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 2) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
+		// TODO some clever math to fill in the shape.
+	}
 
 	return info.This();
 }
