@@ -1,5 +1,6 @@
 #include "led-matrix.addon.h"
 #include <cmath>
+#include <vector>
 #include <iostream>
 
 #define BILLION  1000000000L;
@@ -310,8 +311,8 @@ Napi::Value LedMatrixAddon::draw_polygon(const Napi::CallbackInfo& info) {
 	const auto coordinates = info[0].As<Napi::Array>();
 	const auto length = coordinates.Length();
 	
-	for(int p = 0; p < length; p++){ // Iterate through points
-		DrawLine(this->canvas_, coordinates[((p * 2) + 0) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 1) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 2) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
+	for(int p = 0; p < length; p+=2){ // Iterate through points
+		DrawLine(this->canvas_, coordinates[(p + 0) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 1) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 2) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
 	}
 
 	return info.This();
@@ -321,11 +322,81 @@ Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) 
 
 	const auto coordinates = info[0].As<Napi::Array>();
 	const auto length = coordinates.Length();
-	
-	for(int p = 0; p < length; p++){ // Iterate through points
-		DrawLine(this->canvas_, coordinates[((p * 2) + 0) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 1) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 2) % length].As<Napi::Number>().Int32Value(), coordinates[((p * 2) + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
-		// TODO some clever math to fill in the shape.
+	std::vector<std::vector<int>> lines;
+
+	int min_x = coordinates[(uint32_t)0].As<Napi::Number>().Int32Value();
+	int min_y = coordinates[(uint32_t)1].As<Napi::Number>().Int32Value();
+	int max_x = coordinates[(uint32_t)0].As<Napi::Number>().Int32Value();
+	int max_y = coordinates[(uint32_t)1].As<Napi::Number>().Int32Value();
+
+	int x0;
+	int y0;
+	int x1;
+	int y1;
+	float m;
+	float b;
+
+	for(int p = 0; p < length; p+=2){ // Iterate through points
+		x0 = coordinates[(p + 0) % length].As<Napi::Number>().Int32Value(); // Modulus helps us go back to the first point at the end of the loop.
+		y0 = coordinates[(p + 1) % length].As<Napi::Number>().Int32Value();
+		x1 = coordinates[(p + 2) % length].As<Napi::Number>().Int32Value();
+		y1 = coordinates[(p + 3) % length].As<Napi::Number>().Int32Value();
+
+		// y = mx + b
+		// y - mx = b
+		m = (y1 - y0) / (x1 - x0);
+		b = y0 - (m * x0);
+
+		lines.push_back(std::vector<int> {x0, y0, x1, y1, m, b});
+
+		min_x = (int)fmin(fmin(min_x, x0), x1);
+		min_y = (int)fmin(fmin(min_y, y0), y1);
+		max_x = (int)fmax(fmax(max_x, x0), x1);
+		max_y = (int)fmax(fmax(max_y, y0), y1);
+
+		DrawLine(this->canvas_, x0, y0, x1, y1, fg_color_);
 	}
+
+	// Use the ray casting algorithm for filling the inside of the polygon.
+
+	// y = mx + b
+	// Calculate m using start and end points for each line.
+	// Solve for b for each line being drawn.
+	//
+	// Iterate over:
+	// min x, min y, max x, max y
+	// If y = mx + b is true for any one line, we're on a line 
+	// Count number of times per row.
+
+	int width = max_x - min_x;
+	int height = max_y - min_y;
+
+	int boundcrosscount = 0;
+	for(int p = 0; p < (width * height); p++){
+		int y = min_y + floor(p / width);
+		int x = min_x + (p % width);
+
+		if(x == min_x){
+			boundcrosscount = 0; // Reset boundcrosscount
+		}
+
+		for(int l = 0; l < lines.size(); l++){ // Loop through all lines of polygon.
+			if(y == round((lines[l][4] * x) + lines[l][5])){  // Have we touched a line?
+				boundcrosscount++;
+			}
+		}
+
+		if(boundcrosscount % 2 == 1){ // If we've crossed the border an odd number of times, start filling in.
+			this->canvas_->SetPixel(x, y, fg_color_.r, fg_color_.g, fg_color_.b);
+		}
+
+	}
+
+	// Debugging.  Show corners of the imaginary box in green.
+	// this->canvas_->SetPixel(min_x, min_y, (uint8_t)0, (uint8_t)255, (uint8_t)0);
+	// this->canvas_->SetPixel(min_x, max_y, (uint8_t)0, (uint8_t)255, (uint8_t)0);
+	// this->canvas_->SetPixel(max_x, max_y, (uint8_t)0, (uint8_t)255, (uint8_t)0);
+	// this->canvas_->SetPixel(max_x, min_y, (uint8_t)0, (uint8_t)255, (uint8_t)0);
 
 	return info.This();
 }
