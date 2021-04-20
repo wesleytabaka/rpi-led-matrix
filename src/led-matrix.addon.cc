@@ -1,4 +1,8 @@
 #include "led-matrix.addon.h"
+#include <cmath>
+#include <vector>
+#include <iostream>
+#include <math.h>
 
 #define BILLION  1000000000L;
 #define MILLION  1000000000L;
@@ -28,8 +32,12 @@ Napi::Object LedMatrixAddon::Init(Napi::Env env, Napi::Object exports) {
 		InstanceMethod("clear", &LedMatrixAddon::clear),
 		InstanceMethod("drawBuffer", &LedMatrixAddon::draw_buffer),
 		InstanceMethod("drawCircle", &LedMatrixAddon::draw_circle),
+		InstanceMethod("drawFilledCircle", &LedMatrixAddon::draw_filled_circle),
 		InstanceMethod("drawLine", &LedMatrixAddon::draw_line),
 		InstanceMethod("drawRect", &LedMatrixAddon::draw_rect),
+		InstanceMethod("drawFilledRect", &LedMatrixAddon::draw_filled_rect),
+		InstanceMethod("drawPolygon", &LedMatrixAddon::draw_polygon),
+		InstanceMethod("drawFilledPolygon", &LedMatrixAddon::draw_filled_polygon),
 		InstanceMethod("drawText", &LedMatrixAddon::draw_text),
 		InstanceMethod("fgColor", &LedMatrixAddon::fg_color),
 		InstanceMethod("fill", &LedMatrixAddon::fill),
@@ -239,6 +247,23 @@ Napi::Value LedMatrixAddon::draw_circle(const Napi::CallbackInfo& info) {
 	return info.This();
 }
 
+Napi::Value LedMatrixAddon::draw_filled_circle(const Napi::CallbackInfo& info) {
+	const auto x = info[0].As<Napi::Number>().Int32Value();
+	const auto y = info[1].As<Napi::Number>().Int32Value();
+	const auto r = info[2].As<Napi::Number>().Int32Value();
+	DrawCircle(this->canvas_, x, y, r, fg_color_);
+
+	for(int i = 0 - r; i <= r; i++){
+		for(int j = 0 -  r; j <= r; j++){
+			if(pow(i, 2) + pow(j, 2) < pow(r, 2)){
+				this->canvas_->SetPixel(i+x, y-j, fg_color_.r, fg_color_.g, fg_color_.b);
+			}
+		}
+	}
+
+	return info.This();
+}
+
 Napi::Value LedMatrixAddon::draw_line(const Napi::CallbackInfo& info) {
 	const auto x0 = info[0].As<Napi::Number>().Uint32Value();
 	const auto y0 = info[1].As<Napi::Number>().Uint32Value();
@@ -259,6 +284,171 @@ Napi::Value LedMatrixAddon::draw_rect(const Napi::CallbackInfo& info) {
 	DrawLine(this->canvas_, x0 + w, y0, x0 + w, y0 + h, fg_color_);
 	DrawLine(this->canvas_, x0 + w, y0 + h, x0, y0 + h, fg_color_);
 	DrawLine(this->canvas_, x0, y0 + h, x0, y0, fg_color_);
+
+	return info.This();
+}
+
+Napi::Value LedMatrixAddon::draw_filled_rect(const Napi::CallbackInfo& info) {
+	const auto x0 = info[0].As<Napi::Number>().Int32Value();
+	const auto y0 = info[1].As<Napi::Number>().Int32Value();
+	const auto w  = info[2].As<Napi::Number>().Int32Value();
+	const auto h  = info[3].As<Napi::Number>().Int32Value();
+
+	for(int i = y0 + 1; i < y0 + h; i++){
+		DrawLine(this->canvas_, x0+1, i, x0 + w -1, i, fg_color_);
+
+	}
+
+	DrawLine(this->canvas_, x0, y0, x0 + w - 1, y0, fg_color_); // Top
+	DrawLine(this->canvas_, x0 + w - 1, y0, x0 + w - 1, y0 + h - 1, fg_color_); // Right
+	DrawLine(this->canvas_, x0 + w - 1, y0 + h - 1, x0, y0 + h - 1, fg_color_);
+	DrawLine(this->canvas_, x0, y0 + h - 1, x0, y0, fg_color_);
+
+	return info.This();
+}
+
+Napi::Value LedMatrixAddon::draw_polygon(const Napi::CallbackInfo& info) {
+
+	const auto coordinates = info[0].As<Napi::Array>();
+	const auto length = coordinates.Length();
+	
+	for(int p = 0; p < length; p+=2){ // Iterate through points
+		DrawLine(this->canvas_, coordinates[(p + 0) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 1) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 2) % length].As<Napi::Number>().Int32Value(), coordinates[(p + 3) % length].As<Napi::Number>().Int32Value(), fg_color_);
+	}
+
+	return info.This();
+}
+
+bool compareDoublesEqual(double a, double b){
+	return std::abs(a - b) < (double)0.000001;
+}
+
+Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) {
+	
+	const auto coordinates = info[0].As<Napi::Array>();
+	const auto length = coordinates.Length();
+	std::vector<std::vector<double>> lines; // x0, y0, x1, y1, m, b
+
+	int min_x = coordinates[(uint32_t)0].As<Napi::Number>().DoubleValue();
+	int min_y = coordinates[(uint32_t)1].As<Napi::Number>().DoubleValue();
+	int max_x = coordinates[(uint32_t)0].As<Napi::Number>().DoubleValue();
+	int max_y = coordinates[(uint32_t)1].As<Napi::Number>().DoubleValue();
+
+	int width;
+	int height;
+
+	double x0;
+	double y0;
+	double x1;
+	double y1;
+	double m;
+	double b;
+
+	bool fill_flag = false; // Running flag for filling polygon point-by-point.
+
+	for(int p = 0; p < length; p+=2){ // Iterate through points and draw the lines
+		x0 = coordinates[(p + 0) % length].As<Napi::Number>().DoubleValue(); // Modulus helps us go back to the first point at the end of the loop.
+		y0 = coordinates[(p + 1) % length].As<Napi::Number>().DoubleValue();
+		x1 = coordinates[(p + 2) % length].As<Napi::Number>().DoubleValue();
+		y1 = coordinates[(p + 3) % length].As<Napi::Number>().DoubleValue();
+
+		m = (y1 - y0) / (x1 - x0);
+		b = y0 - (m * x0);
+
+		lines.push_back(std::vector<double> {x0, y0, x1, y1, m, b});
+
+		// Generate rectangle around polygon.
+		min_x = fmin(fmin(min_x, x0), x1);
+		min_y = fmin(fmin(min_y, y0), y1);
+		max_x = fmax(fmax(max_x, x0), x1);
+		max_y = fmax(fmax(max_y, y0), y1);
+
+		DrawLine(this->canvas_, x0, y0, x1, y1, fg_color_);
+	}
+
+	width = (int)(max_x - min_x) + 1;
+	height = (int)(max_y - min_y) + 1;
+
+	for(int p = 0; p < width * height; p++){
+		// Ray casting coordinates
+		double y = min_y + floor(p / width);
+		double x = min_x + (p % width);
+
+		if(x == 0){
+			fill_flag = false;
+		}
+
+		std::vector<int> line_indexes_at_p; // Vector of index of line within "lines" vector.
+		int lines_at_p = 0; // Like The Rentals' song.  :)
+
+		// Loop through all lines at this point, p.
+		for(int line = 0; line < lines.size(); line++){
+			if(
+				(
+					(y == (int)round((lines[line][4] * x) + lines[line][5]) && lines[line][4] == 0) 
+					|| 
+					(x == (int)round((y - lines[line][5]) / lines[line][4]))
+					|| isinf(lines[line][4])
+				)
+				&& (
+					((x >= lines[line][0] && x <= lines[line][2]) || (x >= lines[line][2] && x <= lines[line][0])) 
+					&& ((y >= lines[line][1] && y <= lines[line][3]) || (y >= lines[line][3] && y <= lines[line][1]))
+				)
+			){
+				line_indexes_at_p.push_back(line);
+				lines_at_p++;
+			}
+		}
+		// Fill logic start
+
+		// At a vertex vs. a line.
+		if(lines_at_p > 1){
+			// Here's where it gets nuts.
+			// How many lines does the imaginary ray (y += 0.001) cross and if more than one, are the points on each line on same side of the imaginary line.
+			// Calculate the imaginary x on each line of imaginary y.
+			double imaginary_y = y + 0.001;
+			double imaginary_x0 = (imaginary_y - lines[line_indexes_at_p[0]][5]) / lines[line_indexes_at_p[0]][4]; // Division by zero is happening.TODO
+			double imaginary_x1 = (imaginary_y - lines[line_indexes_at_p[1]][5]) / lines[line_indexes_at_p[1]][4];
+
+			// We have our imaginary y and our imaginary xes.  Are these valid points on each line?
+			bool imaginary_0_valid_point = (
+				(compareDoublesEqual(imaginary_y, (lines[line_indexes_at_p[0]][4] * imaginary_x0) + lines[line_indexes_at_p[0]][5]))
+				&& (
+					(imaginary_x0 >= lines[line_indexes_at_p[0]][0] && imaginary_x0 <= lines[line_indexes_at_p[0]][2]) 
+					|| (imaginary_x0 <= lines[line_indexes_at_p[0]][0] && imaginary_x0 >= lines[line_indexes_at_p[0]][2])
+				)
+			);
+			bool imaginary_1_valid_point = (
+				(compareDoublesEqual(imaginary_y, (lines[line_indexes_at_p[1]][4] * imaginary_x1) + lines[line_indexes_at_p[1]][5]))
+				&& (
+					(imaginary_x1 >= lines[line_indexes_at_p[1]][0] && imaginary_x1 <= lines[line_indexes_at_p[1]][2]) 
+					|| (imaginary_x1 <= lines[line_indexes_at_p[1]][0] && imaginary_x1 >= lines[line_indexes_at_p[1]][2])
+				)
+			);
+
+			// If an imaginary point exists on each of the lines, toggle on and then off. (2 in my old thinking)
+			if(imaginary_0_valid_point & imaginary_1_valid_point){
+				this->canvas_->SetPixel(x, y, fg_color_.r, fg_color_.g, fg_color_.b);
+			}
+			// If an imaginary point exists on only one line (because of a cusp, for example), we've only crossed one line, effectively treating this as a side instead of a vertex.  Toggle fill on or off. (1 in my old thinking)
+			if(imaginary_0_valid_point ^ imaginary_1_valid_point){
+				fill_flag = !fill_flag;
+			}
+			// If an imaginary point exists on no line, do not toggle.  (0 in my old thinking)
+			// if(!imaginary_0_valid_point & !imaginary_1_valid_point){
+			// }
+		}
+
+		// At a line vs. a vertex.
+		if(lines_at_p == 1 && lines[line_indexes_at_p[0]][4] != 0){ // And slope != 0
+			fill_flag = !fill_flag;
+		}
+
+		if(fill_flag){
+			this->canvas_->SetPixel(x, y, fg_color_.r, fg_color_.g, fg_color_.b);
+		}
+		// Fill logic end
+	}
 
 	return info.This();
 }

@@ -24,8 +24,12 @@ class LedMatrixAddon : public Napi::ObjectWrap<LedMatrixAddon> {
 	Napi::Value clear(const Napi::CallbackInfo& info);
 	Napi::Value draw_buffer(const Napi::CallbackInfo& info);
 	Napi::Value draw_circle(const Napi::CallbackInfo& info);
+	Napi::Value draw_filled_circle(const Napi::CallbackInfo& info);
 	Napi::Value draw_line(const Napi::CallbackInfo& info);
 	Napi::Value draw_rect(const Napi::CallbackInfo& info);
+	Napi::Value draw_filled_rect(const Napi::CallbackInfo& info);
+	Napi::Value draw_polygon(const Napi::CallbackInfo& info);
+	Napi::Value draw_filled_polygon(const Napi::CallbackInfo& info);
 	Napi::Value draw_text(const Napi::CallbackInfo& info);
 	Napi::Value fg_color(const Napi::CallbackInfo& info);
 	Napi::Value fill(const Napi::CallbackInfo& info);
