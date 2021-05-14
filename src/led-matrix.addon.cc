@@ -324,7 +324,7 @@ bool compareDoublesEqual(double a, double b){
 }
 
 Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) {
-	
+
 	const auto coordinates = info[0].As<Napi::Array>();
 	const auto length = coordinates.Length();
 	std::vector<std::vector<double>> lines; // x0, y0, x1, y1, m, b
@@ -347,10 +347,10 @@ Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) 
 	bool fill_flag = false; // Running flag for filling polygon point-by-point.
 
 	for(int p = 0; p < length; p+=2){ // Iterate through points and draw the lines
-		x0 = coordinates[(p + 0) % length].As<Napi::Number>().DoubleValue(); // Modulus helps us go back to the first point at the end of the loop.
-		y0 = coordinates[(p + 1) % length].As<Napi::Number>().DoubleValue();
-		x1 = coordinates[(p + 2) % length].As<Napi::Number>().DoubleValue();
-		y1 = coordinates[(p + 3) % length].As<Napi::Number>().DoubleValue();
+		x0 = (double)round(coordinates[(p + 0) % length].As<Napi::Number>().DoubleValue()); // Modulus helps us go back to the first point at the end of the loop.
+		y0 = (double)round(coordinates[(p + 1) % length].As<Napi::Number>().DoubleValue());
+		x1 = (double)round(coordinates[(p + 2) % length].As<Napi::Number>().DoubleValue());
+		y1 = (double)round(coordinates[(p + 3) % length].As<Napi::Number>().DoubleValue());
 
 		m = (y1 - y0) / (x1 - x0);
 		b = y0 - (m * x0);
@@ -374,7 +374,7 @@ Napi::Value LedMatrixAddon::draw_filled_polygon(const Napi::CallbackInfo& info) 
 		double y = min_y + floor(p / width);
 		double x = min_x + (p % width);
 
-		if(x == 0){
+		if(x == min_x){
 			fill_flag = false;
 		}
 
